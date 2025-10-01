@@ -1,4 +1,7 @@
 ---
+- name: Install openshift and kubernetes Python packages
+  command: /usr/libexec/platform-python -m pip install openshift kubernetes==33.1.0
+  
 - name: Create dynamic-plugins-npmrc Secret in OpenShift
   kubernetes.core.k8s:
     state: present
