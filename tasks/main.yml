@@ -158,6 +158,26 @@
   set_fact:
     cluster_argo_password: "{{ r_cluster_argo_credentials.resources[0].data['admin.password'] | b64decode }}"
 
+# NEW STEP 1: Get RHDH Deployment name dynamically
+- name: Get RHDH deployment name dynamically
+  command: oc get deploy -n tssc-dh -o jsonpath='{.items[0].metadata.name}'
+  register: rhdh_deployment_name
+  changed_when: false
+
+# NEW STEP 2: Wait for RHDH rollout to complete BEFORE touching config
+- name: Wait for RHDH deployment to be ready
+  vars:
+    rhdh_namespace: tssc-dh
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ rhdh_deployment_name.stdout }}"
+    namespace: "{{ rhdh_namespace }}"
+  until: rhdh_deploy_status.resources[0].status.availableReplicas == rhdh_deploy_status.resources[0].status.replicas
+  retries: 60
+  delay: 10
+  register: rhdh_deploy_status
+
 - name: Get current tssc-developer-hub-env Secret
   kubernetes.core.k8s_info:
     api_version: v1
@@ -227,6 +247,32 @@
         namespace: tssc-dh
       data:
         app-config.tssc.yaml: "{{ updated_app_config | to_nice_yaml }}"
+
+# NEW STEP 3: Wait for RHDH rollout to complete AFTER config updates
+- name: Wait for RHDH deployment to be ready
+  vars:
+    rhdh_namespace: tssc-dh
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ rhdh_deployment_name.stdout }}"
+    namespace: "{{ rhdh_namespace }}"
+  until: rhdh_deploy_status_after.resources[0].status.availableReplicas == rhdh_deploy_status_after.resources[0].statu
+s.replicas
+  retries: 60
+  delay: 10
+  register: rhdh_deploy_status_after
+
+# NEW STEP 4: (Optional) Confirm RHDH pod status after rollout
+- name: Confirm RHDH pods are running
+  command: >
+    oc get pods -n tssc-dh -o jsonpath='{.items[*].status.phase}'
+  register: rhdh_pod_status
+  changed_when: false
+
+- name: Debug RHDH pod status
+  debug:
+    var: rhdh_pod_status.stdout
 
 - name: Get GitLab Route from gitlab namespace
   kubernetes.core.k8s_info:
