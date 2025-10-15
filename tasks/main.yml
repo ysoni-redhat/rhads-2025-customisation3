@@ -257,8 +257,7 @@
     kind: Deployment
     name: "{{ rhdh_deployment_name.stdout }}"
     namespace: "{{ rhdh_namespace }}"
-  until: rhdh_deploy_status_after.resources[0].status.availableReplicas == rhdh_deploy_status_after.resources[0].statu
-s.replicas
+  until: rhdh_deploy_status_after.resources[0].status.availableReplicas == rhdh_deploy_status_after.resources[0].status.replicas
   retries: 60
   delay: 10
   register: rhdh_deploy_status_after
