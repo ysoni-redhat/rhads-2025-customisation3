@@ -356,3 +356,58 @@
       name: "denied"
       color: "#FF0000"
     status_code: [201, 409]  # 409 in case label already exists
+
+##################################################################################
+# Changing RHDH configmap's odic setting to login
+##################################################################################
+# STEP 1: Get existing ConfigMap
+- name: Get current RHDH ConfigMap
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: tssc-developer-hub-app-config
+    namespace: tssc-dh
+  register: rhdh_cm
+
+# STEP 2: Replace 'prompt: auto' → 'prompt: login'
+- name: Update OIDC prompt line in ConfigMap data
+  ansible.builtin.set_fact:
+    updated_app_config: "{{ rhdh_cm.resources[0].data['app-config.tssc.yaml'] | regex_replace('prompt:\\s*auto', 'prompt: login') }}"
+
+# STEP 3: Apply updated ConfigMap back
+- name: Apply updated ConfigMap
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: ConfigMap
+    name: tssc-developer-hub-app-config
+    namespace: tssc-dh
+    definition:
+      data:
+        app-config.tssc.yaml: "{{ updated_app_config }}"
+
+# STEP 4: Wait for RHDH rollout to complete AFTER config updates
+- name: Wait for RHDH deployment to be ready
+  vars:
+    rhdh_namespace: tssc-dh
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ rhdh_deployment_name.stdout }}"
+    namespace: "{{ rhdh_namespace }}"
+  until: rhdh_deploy_status_after.resources[0].status.availableReplicas == rhdh_deploy_status_after.resources[0].status.replicas
+  retries: 60
+  delay: 10
+  register: rhdh_deploy_status_after
+
+# STEP 5: (Optional) Confirm RHDH pod status after rollout
+- name: Confirm RHDH pods are running
+  command: >
+    oc get pods -n tssc-dh -o jsonpath='{.items[*].status.phase}'
+  register: rhdh_pod_status
+  changed_when: false
+
+- name: Debug RHDH pod status
+  debug:
+    var: rhdh_pod_status.stdout
+
+
